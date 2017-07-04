@@ -760,10 +760,7 @@ class parser(object):
                                     res.minute = int(60*(value % 1))
 
                             elif idx == 1:
-                                res.minute = int(value)
-
-                                if value % 1:
-                                    res.second = int(60*(value % 1))
+                                (res.minute, res.second) = _parse_min_sec(value, res.second)
 
                             elif idx == 2:
                                 res.second, res.microsecond = \
@@ -796,11 +793,7 @@ class parser(object):
                         idx = info.hms(l[i-3])
 
                         if idx == 0:               # h
-                            res.minute = int(value)
-
-                            sec_remainder = value % 1
-                            if sec_remainder:
-                                res.second = int(60 * sec_remainder)
+                            (res.minute, res.second) = _parse_min_sec(value, res.second)
                         elif idx == 1:             # m
                             res.second, res.microsecond = \
                                 _parsems(value_repr)
@@ -814,10 +807,7 @@ class parser(object):
                         res.hour = int(value)
                         i += 1
                         value = float(l[i])
-                        res.minute = int(value)
-
-                        if value % 1:
-                            res.second = int(60*(value % 1))
+                        (res.minute, res.second) = _parse_min_sec(value, res.second)
 
                         i += 1
 
@@ -967,7 +957,7 @@ class parser(object):
                     continue
 
                 # Check for a timezone name
-                if (res.hour is not None and len(l[i]) <= 5 and
+                elif (res.hour is not None and len(l[i]) <= 5 and
                         res.tzname is None and res.tzoffset is None and
                         not [x for x in l[i] if x not in
                              string.ascii_uppercase]):
@@ -991,7 +981,7 @@ class parser(object):
                     continue
 
                 # Check for a numbered timezone
-                if res.hour is not None and l[i] in ('+', '-'):
+                elif res.hour is not None and l[i] in ('+', '-'):
                     signal = (-1, 1)[l[i] == '+']
                     i += 1
                     len_li = len(l[i])
@@ -1024,12 +1014,14 @@ class parser(object):
                     continue
 
                 # Check jumps
-                if not (info.jump(l[i]) or fuzzy):
+                elif not (info.jump(l[i]) or fuzzy):
                     return None, None
 
-                last_skipped_token_i = self._skip_token(skipped_tokens,
-                                                last_skipped_token_i, i, l)
-                i += 1
+                else:
+                    last_skipped_token_i = self._skip_token(skipped_tokens,
+                                                    last_skipped_token_i, i, l)
+                    i += 1
+                continue
 
             # Process year/month/day
             year, month, day = ymd.resolve_ymd(mstridx, yearfirst, dayfirst)
@@ -1349,6 +1341,13 @@ DEFAULTTZPARSER = _tzparser()
 def _parsetz(tzstr):
     return DEFAULTTZPARSER.parse(tzstr)
 
+
+def _parse_min_sec(value, second=None):
+    minute = int(value)
+
+    if value % 1:
+        second = int(60*(value % 1))
+    return (minute, second)
 
 def _parsems(value):
     """Parse a I[.F] seconds value into (seconds, microseconds)."""
