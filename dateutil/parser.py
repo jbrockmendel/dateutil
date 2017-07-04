@@ -864,11 +864,7 @@ class parser(object):
                         if i+1 < len_l and info.ampm(l[i+1]) is not None:
                             # 12 am
                             res.hour = int(value)
-
-                            if res.hour < 12 and info.ampm(l[i+1]) == 1:
-                                res.hour += 12
-                            elif res.hour == 12 and info.ampm(l[i+1]) == 0:
-                                res.hour = 0
+                            res.hour = _adjust_ampm(res.hour, info.ampm(l[i+1]))
 
                             i += 1
                         else:
@@ -879,11 +875,7 @@ class parser(object):
 
                         # 12am
                         res.hour = int(value)
-
-                        if res.hour < 12 and info.ampm(l[i]) == 1:
-                            res.hour += 12
-                        elif res.hour == 12 and info.ampm(l[i]) == 0:
-                            res.hour = 0
+                        res.hour = _adjust_ampm(res.hour, info.ampm(l[i]))
                         i += 1
 
                     elif not fuzzy:
@@ -965,11 +957,7 @@ class parser(object):
                                              '12-hour clock.')
 
                     if val_is_ampm:
-                        if value == 1 and res.hour < 12:
-                            res.hour += 12
-                        elif value == 0 and res.hour == 12:
-                            res.hour = 0
-
+                        res.hour = _adjust_ampm(res.hour, value)
                         res.ampm = value
 
                     elif fuzzy:
@@ -1369,6 +1357,14 @@ def _parsems(value):
     else:
         i, f = value.split(".")
         return int(i), int(f.ljust(6, "0")[:6])
+
+
+def _adjust_ampm(hour, is_pm):
+    if hour < 12 and is_pm:
+        hour += 12
+    elif hour == 12 and not is_pm:
+        hour = 0
+    return hour
 
 
 # vim:ts=4:sw=4:et
