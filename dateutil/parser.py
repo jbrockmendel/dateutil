@@ -676,8 +676,7 @@ class parser(object):
 
         # keep up with the last token skipped so we can recombine
         # consecutively skipped tokens (-2 for when i begins at 0).
-        last_skipped_token_i = -2
-        skipped_tokens = list()
+        skipped_indices = []
 
         try:
             # year/month/day list
@@ -973,8 +972,7 @@ class parser(object):
                         res.ampm = value
 
                     elif fuzzy:
-                        last_skipped_token_i = self._skip_token(skipped_tokens,
-                                                    last_skipped_token_i, i, l)
+                        skipped_indices.append(i)
                     i += 1
                     continue
 
@@ -1039,8 +1037,7 @@ class parser(object):
                 if not (info.jump(l[i]) or fuzzy):
                     return None, None
 
-                last_skipped_token_i = self._skip_token(skipped_tokens,
-                                                last_skipped_token_i, i, l)
+                skipped_indices.append(i)
                 i += 1
 
             # Process year/month/day
@@ -1062,6 +1059,7 @@ class parser(object):
             return None, None
 
         if fuzzy_with_tokens:
+            skipped_tokens = _recombine_skipped(l, skipped_indices)
             return res, tuple(skipped_tokens)
         else:
             return res, None
@@ -1369,6 +1367,17 @@ def _parsems(value):
     else:
         i, f = value.split(".")
         return int(i), int(f.ljust(6, "0")[:6])
+
+
+def _recombine_skipped(tokens, skipped_indices):
+    skipped = []
+
+    for idx in skipped_indices:
+        if idx-1 in skipped_indices:
+            skipped[-1] = skipped[-1] + tokens[idx]
+        else:
+            skipped.append(tokens[idx])
+    return skipped
 
 
 # vim:ts=4:sw=4:et
