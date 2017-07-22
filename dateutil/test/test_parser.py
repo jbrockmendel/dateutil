@@ -54,6 +54,13 @@ class ParserTest(unittest.TestCase):
 
         self.assertEqual(parse(dstr), datetime(2014, 1, 19))
 
+    def testParseBytes(self):
+        self.assertEqual(parse(b'2014 January 19'), datetime(2014, 1, 19))
+
+    def testParseBytearray(self):
+        self.assertEqual(parse(bytearray(b'2014 January 19')),
+                         datetime(2014, 1, 19))
+
     def testParseStr(self):
         self.assertEqual(parse(self.str_str),
                          parse(self.uni_str))
