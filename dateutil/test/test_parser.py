@@ -909,3 +909,15 @@ class ParserTest(unittest.TestCase):
         res = parse(dtstr, fuzzy=True)
         self.assertEqual(res, datetime(2017, 7, 17, 6, 15))
 
+    def test_minute_rounding(self):
+        # See GH 427
+        dstr = '5.6h'
+        res = parse(dstr)
+        self.assertEqual(res.minute, 36)
+
+    def test_second_rounding(self):
+        # See GH 427
+        dstr = '5.6m'
+        res = parse(dstr)
+        self.assertEqual(res.second, 36)
+

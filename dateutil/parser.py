@@ -757,13 +757,17 @@ class parser(object):
                                 res.hour = int(value)
 
                                 if value % 1:
-                                    res.minute = int(60*(value % 1))
+                                    ndigits = len(value_repr.split('.')[-1])
+                                    frac = round(value % 1, ndigits)
+                                    res.minute = int(60*frac)
 
                             elif idx == 1:
                                 res.minute = int(value)
 
                                 if value % 1:
-                                    res.second = int(60*(value % 1))
+                                    ndigits = len(value_repr.split('.')[-1])
+                                    frac = round(value % 1, ndigits)
+                                    res.second = int(60*frac)
 
                             elif idx == 2:
                                 res.second, res.microsecond = \
@@ -798,9 +802,10 @@ class parser(object):
                         if idx == 0:               # h
                             res.minute = int(value)
 
-                            sec_remainder = value % 1
-                            if sec_remainder:
-                                res.second = int(60 * sec_remainder)
+                            if value % 1:
+                                ndigits = len(value_repr.split('.')[-1])
+                                frac = round(value % 1, ndigits)
+                                res.second = int(60*frac)
                         elif idx == 1:             # m
                             res.second, res.microsecond = \
                                 _parsems(value_repr)
@@ -817,7 +822,9 @@ class parser(object):
                         res.minute = int(value)
 
                         if value % 1:
-                            res.second = int(60*(value % 1))
+                            ndigits = len(value_repr.split('.')[-1])
+                            frac = round(value % 1, ndigits)
+                            res.second = int(60*frac)
 
                         i += 1
 
@@ -1360,7 +1367,6 @@ DEFAULTTZPARSER = _tzparser()
 
 def _parsetz(tzstr):
     return DEFAULTTZPARSER.parse(tzstr)
-
 
 def _parsems(value):
     """Parse a I[.F] seconds value into (seconds, microseconds)."""
