@@ -597,7 +597,10 @@ class parser(object):
             default = datetime.datetime.now().replace(hour=0, minute=0,
                                                       second=0, microsecond=0)
 
-        res, skipped_tokens = self._parse(timestr, **kwargs)
+        try:
+            res, skipped_tokens = self._parse(timestr, **kwargs)
+        except (IndexError, ValueError, AssertionError):
+            res, skipped_tokens = None, None
 
         if res is None:
             raise ValueError("Unknown string format:", timestr)
@@ -711,257 +714,254 @@ class parser(object):
 
         len_l = len(l)
         i = 0
-        try:
-            while i < len_l:
+        while i < len_l:
 
-                # Check if it's a number
-                try:
-                    value_repr = l[i]
-                    value = float(value_repr)
-                except ValueError:
-                    value = None
+            # Check if it's a number
+            try:
+                value_repr = l[i]
+                value = float(value_repr)
+            except ValueError:
+                value = None
 
-                if value is not None:
-                    # Token is a number
-                    len_li = len(l[i])
+            if value is not None:
+                # Token is a number
+                len_li = len(l[i])
 
-                    if (len(ymd) == 3 and len_li in (2, 4) and
-                          res.hour is None and
-                          (i + 1 >= len_l or
-                          (l[i + 1] != ':' and
-                           info.hms(l[i + 1]) is None))):
-                        # 19990101T23[59]
-                        s = l[i]
-                        res.hour = int(s[:2])
+                if (len(ymd) == 3 and len_li in (2, 4) and
+                      res.hour is None and
+                      (i + 1 >= len_l or
+                      (l[i + 1] != ':' and
+                       info.hms(l[i + 1]) is None))):
+                    # 19990101T23[59]
+                    s = l[i]
+                    res.hour = int(s[:2])
 
-                        if len_li == 4:
-                            res.minute = int(s[2:])
-
-                    elif len_li == 6 or (len_li > 6 and l[i].find('.') == 6):
-                        # YYMMDD or HHMMSS[.ss]
-                        s = l[i]
-
-                        if not ymd and '.' not in l[i]:
-                            ymd.append(s[:2])
-                            ymd.append(s[2:4])
-                            ymd.append(s[4:])
-                        else:
-                            # 19990101T235959[.59]
-
-                            # TODO: Check if res attributes already set.
-                            res.hour = int(s[:2])
-                            res.minute = int(s[2:4])
-                            res.second, res.microsecond = self._parsems(s[4:])
-
-                    elif len_li in (8, 12, 14):
-                        # YYYYMMDD
-                        s = l[i]
-                        ymd.append(s[:4], 'Y')
-                        ymd.append(s[4:6])
-                        ymd.append(s[6:8])
-
-                        if len_li > 8:
-                            res.hour = int(s[8:10])
-                            res.minute = int(s[10:12])
-
-                            if len_li > 12:
-                                res.second = int(s[12:])
-
-                    elif self._find_hms_idx(i, l, info, allow_jump=True) is not None:
-                        # HH[ ]h or MM[ ]m or SS[.ss][ ]s
-                        hms_idx = self._find_hms_idx(i, l, info, allow_jump=True)
-                        (i, hms) = self._parse_hms(i, l, info, hms_idx)
-                        if hms is not None:
-                            # TODO: checking that hour/minute/second are not
-                            # already set?
-                            self._assign_hms(res, value_repr, hms)
-
-                    elif i + 2 < len_l and l[i + 1] == ':':
-                        # HH:MM[:SS[.ss]]
-                        res.hour = int(value)
-                        value = float(l[i + 2])  # TODO: try/except for this?
-                        (res.minute, res.second) = self._parse_min_sec(value)
-
-                        if i + 4 < len_l and l[i + 3] == ':':
-                            res.second, res.microsecond = self._parsems(l[i + 4])
-
-                            i += 2
-
-                        i += 2
-
-                    elif i + 1 < len_l and l[i + 1] in ('-', '/', '.'):
-                        sep = l[i + 1]
-                        ymd.append(value_repr)
-
-                        if i + 2 < len_l and not info.jump(l[i + 2]):
-                            if l[i + 2].isdigit():
-                                # 01-01[-01]
-                                ymd.append(l[i + 2])
-                            else:
-                                # 01-Jan[-01]
-                                value = info.month(l[i + 2])
-
-                                if value is not None:
-                                    ymd.append(value, 'M')
-                                else:
-                                    raise InvalidDatetimeError(timestr)
-
-                            if i + 3 < len_l and l[i + 3] == sep:
-                                # We have three members
-                                value = info.month(l[i + 4])
-
-                                if value is not None:
-                                    ymd.append(value, 'M')
-                                else:
-                                    ymd.append(l[i + 4])
-                                i += 2
-
-                            i += 1
-                        i += 1
-
-                    elif i + 1 >= len_l or info.jump(l[i + 1]):
-                        if i + 2 < len_l and info.ampm(l[i + 2]) is not None:
-                            # 12 am
-                            hour = int(value)
-                            res.hour = self._adjust_ampm(hour, info.ampm(l[i + 2]))
-                            i += 1
-                        else:
-                            # Year, month or day
-                            ymd.append(value)
-                        i += 1
-
-                    elif info.ampm(l[i + 1]) is not None:
-                        # 12am
-                        hour = int(value)
-                        res.hour = self._adjust_ampm(hour, info.ampm(l[i + 1]))
-                        i += 1
-
-                    elif not fuzzy:
-                        raise InvalidDatetimeError(timestr)
-
-                # Check weekday
-                elif info.weekday(l[i]) is not None:
-                    value = info.weekday(l[i])
-                    res.weekday = value
-
-                # Check month name
-                elif info.month(l[i]) is not None:
-                    value = info.month(l[i])
-                    ymd.append(value, 'M')
-
-                    if i + 1 < len_l:
-                        if l[i + 1] in ('-', '/'):
-                            # Jan-01[-99]
-                            sep = l[i + 1]
-                            ymd.append(l[i + 2])
-
-                            if i + 3 < len_l and l[i + 3] == sep:
-                                # Jan-01-99
-                                ymd.append(l[i + 4])
-                                i += 2
-
-                            i += 2
-
-                        elif (i + 4 < len_l and l[i + 1] == l[i + 3] == ' ' and
-                              info.pertain(l[i + 2])):
-                            # Jan of 01
-                            # In this case, 01 is clearly year
-                            if l[i + 4].isdigit():
-                                # Convert it here to become unambiguous
-                                value = int(l[i + 4])
-                                year = str(info.convertyear(value))
-                                ymd.append(year, 'Y')
-                            else:
-                                # Wrong guess
-                                pass
-                                # TODO: not hit in tests
-                            i += 4
-
-                # Check am/pm
-                elif info.ampm(l[i]) is not None:
-                    value = info.ampm(l[i])
-                    val_is_ampm = self._ampm_valid(res.hour, res.ampm, fuzzy)
-
-                    if val_is_ampm:
-                        res.hour = self._adjust_ampm(res.hour, value)
-                        res.ampm = value
-
-                    elif fuzzy:
-                        skipped_idxs.append(i)
-
-                # Check for a timezone name
-                elif self._could_be_tzname(res.hour, res.tzname, res.tzoffset, l[i]):
-                    res.tzname = l[i]
-                    res.tzoffset = info.tzoffset(res.tzname)
-
-                    # Check for something like GMT+3, or BRST+3. Notice
-                    # that it doesn't mean "I am 3 hours after GMT", but
-                    # "my time +3 is GMT". If found, we reverse the
-                    # logic so that timezone parsing code will get it
-                    # right.
-                    if i + 1 < len_l and l[i + 1] in ('+', '-'):
-                        l[i + 1] = ('+', '-')[l[i + 1] == '+']
-                        res.tzoffset = None
-                        if info.utczone(res.tzname):
-                            # With something like GMT+3, the timezone
-                            # is *not* GMT.
-                            res.tzname = None
-
-                # Check for a numbered timezone
-                elif res.hour is not None and l[i] in ('+', '-'):
-                    signal = (-1, 1)[l[i] == '+']
-                    len_li = len(l[i + 1])
-
-                    # TODO: check that l[i + 1] is integer?
                     if len_li == 4:
-                        # -0300
-                        hour_offset = int(l[i + 1][:2])
-                        min_offset = int(l[i + 1][2:])
-                    elif i + 2 < len_l and l[i + 2] == ':':
-                        # -03:00
-                        hour_offset = int(l[i + 1])
-                        min_offset = int(l[i + 3])  # TODO: Check that l[i+3] is minute-like?
-                        i += 2
-                    elif len_li <= 2:
-                        # -[0]3
-                        hour_offset = int(l[i + 1][:2])
-                        min_offset = 0
+                        res.minute = int(s[2:])
+
+                elif len_li == 6 or (len_li > 6 and l[i].find('.') == 6):
+                    # YYMMDD or HHMMSS[.ss]
+                    s = l[i]
+
+                    if not ymd and '.' not in l[i]:
+                        ymd.append(s[:2])
+                        ymd.append(s[2:4])
+                        ymd.append(s[4:])
                     else:
-                        raise InvalidDatetimeError(timestr)
+                        # 19990101T235959[.59]
 
-                    res.tzoffset = signal * (hour_offset * 3600 + min_offset * 60)
+                        # TODO: Check if res attributes already set.
+                        res.hour = int(s[:2])
+                        res.minute = int(s[2:4])
+                        res.second, res.microsecond = self._parsems(s[4:])
 
-                    # TODO: Check if res.tzname is not None
-                    # Look for a timezone name between parenthesis
-                    if (i + 5 < len_l and
-                        info.jump(l[i + 2]) and l[i + 3] == '(' and
-                        l[i + 5] == ')' and
-                        3 <= len(l[i + 4]) <= 5 and
-                        all(x in string.ascii_uppercase for x in l[i + 4])):  # TODO: merge this with _could_be_tzname
-                        # -0300 (BRST)
-                        res.tzname = l[i + 4]
-                        i += 4
+                elif len_li in (8, 12, 14):
+                    # YYYYMMDD
+                    s = l[i]
+                    ymd.append(s[:4], 'Y')
+                    ymd.append(s[4:6])
+                    ymd.append(s[6:8])
 
+                    if len_li > 8:
+                        res.hour = int(s[8:10])
+                        res.minute = int(s[10:12])
+
+                        if len_li > 12:
+                            res.second = int(s[12:])
+
+                elif self._find_hms_idx(i, l, info, allow_jump=True) is not None:
+                    # HH[ ]h or MM[ ]m or SS[.ss][ ]s
+                    hms_idx = self._find_hms_idx(i, l, info, allow_jump=True)
+                    (i, hms) = self._parse_hms(i, l, info, hms_idx)
+                    if hms is not None:
+                        # TODO: checking that hour/minute/second are not
+                        # already set?
+                        self._assign_hms(res, value_repr, hms)
+
+                elif i + 2 < len_l and l[i + 1] == ':':
+                    # HH:MM[:SS[.ss]]
+                    res.hour = int(value)
+                    value = float(l[i + 2])  # TODO: try/except for this?
+                    (res.minute, res.second) = self._parse_min_sec(value)
+
+                    if i + 4 < len_l and l[i + 3] == ':':
+                        res.second, res.microsecond = self._parsems(l[i + 4])
+
+                        i += 2
+
+                    i += 2
+
+                elif i + 1 < len_l and l[i + 1] in ('-', '/', '.'):
+                    sep = l[i + 1]
+                    ymd.append(value_repr)
+
+                    if i + 2 < len_l and not info.jump(l[i + 2]):
+                        if l[i + 2].isdigit():
+                            # 01-01[-01]
+                            ymd.append(l[i + 2])
+                        else:
+                            # 01-Jan[-01]
+                            value = info.month(l[i + 2])
+
+                            if value is not None:
+                                ymd.append(value, 'M')
+                            else:
+                                raise InvalidDatetimeError(timestr)
+
+                        if i + 3 < len_l and l[i + 3] == sep:
+                            # We have three members
+                            value = info.month(l[i + 4])
+
+                            if value is not None:
+                                ymd.append(value, 'M')
+                            else:
+                                ymd.append(l[i + 4])
+                            i += 2
+
+                        i += 1
                     i += 1
 
-                # Check jumps
-                elif not (info.jump(l[i]) or fuzzy):
+                elif i + 1 >= len_l or info.jump(l[i + 1]):
+                    if i + 2 < len_l and info.ampm(l[i + 2]) is not None:
+                        # 12 am
+                        hour = int(value)
+                        res.hour = self._adjust_ampm(hour, info.ampm(l[i + 2]))
+                        i += 1
+                    else:
+                        # Year, month or day
+                        ymd.append(value)
+                    i += 1
+
+                elif info.ampm(l[i + 1]) is not None:
+                    # 12am
+                    hour = int(value)
+                    res.hour = self._adjust_ampm(hour, info.ampm(l[i + 1]))
+                    i += 1
+
+                elif not fuzzy:
                     raise InvalidDatetimeError(timestr)
 
-                else:
+            # Check weekday
+            elif info.weekday(l[i]) is not None:
+                value = info.weekday(l[i])
+                res.weekday = value
+
+            # Check month name
+            elif info.month(l[i]) is not None:
+                value = info.month(l[i])
+                ymd.append(value, 'M')
+
+                if i + 1 < len_l:
+                    if l[i + 1] in ('-', '/'):
+                        # Jan-01[-99]
+                        sep = l[i + 1]
+                        ymd.append(l[i + 2])
+
+                        if i + 3 < len_l and l[i + 3] == sep:
+                            # Jan-01-99
+                            ymd.append(l[i + 4])
+                            i += 2
+
+                        i += 2
+
+                    elif (i + 4 < len_l and l[i + 1] == l[i + 3] == ' ' and
+                          info.pertain(l[i + 2])):
+                        # Jan of 01
+                        # In this case, 01 is clearly year
+                        if l[i + 4].isdigit():
+                            # Convert it here to become unambiguous
+                            value = int(l[i + 4])
+                            year = str(info.convertyear(value))
+                            ymd.append(year, 'Y')
+                        else:
+                            # Wrong guess
+                            pass
+                            # TODO: not hit in tests
+                        i += 4
+
+            # Check am/pm
+            elif info.ampm(l[i]) is not None:
+                value = info.ampm(l[i])
+                val_is_ampm = self._ampm_valid(res.hour, res.ampm, fuzzy)
+
+                if val_is_ampm:
+                    res.hour = self._adjust_ampm(res.hour, value)
+                    res.ampm = value
+
+                elif fuzzy:
                     skipped_idxs.append(i)
+
+            # Check for a timezone name
+            elif self._could_be_tzname(res.hour, res.tzname, res.tzoffset, l[i]):
+                res.tzname = l[i]
+                res.tzoffset = info.tzoffset(res.tzname)
+
+                # Check for something like GMT+3, or BRST+3. Notice
+                # that it doesn't mean "I am 3 hours after GMT", but
+                # "my time +3 is GMT". If found, we reverse the
+                # logic so that timezone parsing code will get it
+                # right.
+                if i + 1 < len_l and l[i + 1] in ('+', '-'):
+                    l[i + 1] = ('+', '-')[l[i + 1] == '+']
+                    res.tzoffset = None
+                    if info.utczone(res.tzname):
+                        # With something like GMT+3, the timezone
+                        # is *not* GMT.
+                        res.tzname = None
+
+            # Check for a numbered timezone
+            elif res.hour is not None and l[i] in ('+', '-'):
+                signal = (-1, 1)[l[i] == '+']
+                len_li = len(l[i + 1])
+
+                # TODO: check that l[i + 1] is integer?
+                if len_li == 4:
+                    # -0300
+                    hour_offset = int(l[i + 1][:2])
+                    min_offset = int(l[i + 1][2:])
+                elif i + 2 < len_l and l[i + 2] == ':':
+                    # -03:00
+                    hour_offset = int(l[i + 1])
+                    min_offset = int(l[i + 3])  # TODO: Check that l[i+3] is minute-like?
+                    i += 2
+                elif len_li <= 2:
+                    # -[0]3
+                    hour_offset = int(l[i + 1][:2])
+                    min_offset = 0
+                else:
+                    raise InvalidDatetimeError(timestr)
+
+                res.tzoffset = signal * (hour_offset * 3600 + min_offset * 60)
+
+                # TODO: Check if res.tzname is not None
+                # Look for a timezone name between parenthesis
+                if (i + 5 < len_l and
+                    info.jump(l[i + 2]) and l[i + 3] == '(' and
+                    l[i + 5] == ')' and
+                    3 <= len(l[i + 4]) <= 5 and
+                    all(x in string.ascii_uppercase for x in l[i + 4])):  # TODO: merge this with _could_be_tzname
+                    # -0300 (BRST)
+                    res.tzname = l[i + 4]
+                    i += 4
+
                 i += 1
 
-            # Process year/month/day
-            year, month, day = ymd.resolve_ymd(yearfirst, dayfirst)
+            # Check jumps
+            elif not (info.jump(l[i]) or fuzzy):
+                raise InvalidDatetimeError(timestr)
 
-            res.century_specified = ymd.century_specified
-            res.year = year
-            res.month = month
-            res.day = day
+            else:
+                skipped_idxs.append(i)
+            i += 1
 
-        except (IndexError, ValueError, AssertionError):
-            return None, None
+        # Process year/month/day
+        year, month, day = ymd.resolve_ymd(yearfirst, dayfirst)
+
+        res.century_specified = ymd.century_specified
+        res.year = year
+        res.month = month
+        res.day = day
+
 
         if not info.validate(res):
             return None, None
